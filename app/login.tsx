@@ -1,15 +1,21 @@
+import authApi from "@/api/authApi"
 import FloatingLabelInput from "@/components/FloatingLabelInput"
+import { loginSuccess } from "@/redux/slices/AuthSlice"
 import { FontAwesome5, Ionicons } from "@expo/vector-icons"
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router"
 import { useMemo, useState } from "react"
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { useDispatch } from "react-redux"
 import google from '../assets/images/google.png'
 
 const Login = () => {
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const dispatch = useDispatch();
+    const [loading, setLoading] = useState(false);
 
     const checkRegexAll = (type: string, value: string) => {
         let regex;
@@ -40,7 +46,32 @@ const Login = () => {
         const regexPass = values.every(v => checkRegexAll(v.type, v.value));
         if (!regexPass) return false
         return true;
-    }, [email, password])
+    }, [email, password]);
+
+    const loginHandle = async () => {
+        try {
+            setLoading(true);
+            const res = await authApi.login(email, password);
+            const data = res.data;
+
+            console.log("Dữ liệu nhận được:", data);
+
+
+            if (data && data.token && data.user) {
+                dispatch(loginSuccess(data));
+                await AsyncStorage.setItem("token", data.token);
+                await AsyncStorage.setItem("user", JSON.stringify(data.user));
+                router.push('/(tabs)');
+            } else {
+                console.error("Cấu trúc dữ liệu server trả về không đúng:", data);
+            }
+        } catch (error: any) {
+            console.log(error.response?.data);
+
+        } finally {
+            setLoading(false);
+        }
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -109,21 +140,25 @@ const Login = () => {
             </ScrollView>
             <View style={{ paddingBottom: 30, alignItems: 'center' }}>
                 <TouchableOpacity
-                    disabled={!checkActive}
+                    // disabled={!checkActive}
                     style={[
                         styles.btn,
-                        checkActive && styles.btn_active
+                        (checkActive && !loading) && styles.btn_active
                     ]}
-                    onPress={() => router.push('/(tabs)')}
+                    onPress={() => loginHandle()}
                 >
-                    <Text
-                        style={[
-                            styles.text_btn,
-                            checkActive && styles.text_btnActive
-                        ]}
-                    >
-                        Đăng nhập
-                    </Text>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text
+                            style={[
+                                styles.text_btn,
+                                checkActive && styles.text_btnActive
+                            ]}
+                        >
+                            Đăng nhập
+                        </Text>
+                    )}
                 </TouchableOpacity>
 
                 <View style={[styles.flex_box, { marginVertical: 10 }]}>

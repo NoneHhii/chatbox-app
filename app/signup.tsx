@@ -1,8 +1,9 @@
+import authApi from "@/api/authApi"
 import FloatingLabelInput from "@/components/FloatingLabelInput"
 import { Ionicons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
 import { useMemo, useState } from "react"
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 const Signup = () => {
@@ -11,6 +12,7 @@ const Signup = () => {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const router = useRouter();
+    const [loading, setLoading] = useState(false);
 
     const checkRegexAll = (type: string, value: string) => {
         let regex;
@@ -47,7 +49,38 @@ const Signup = () => {
 
         if (password.trim() !== confirmPassword.trim()) return false;
         return true;
-    }, [email, name, password, confirmPassword])
+    }, [email, name, password, confirmPassword]);
+
+    const handleRegister = async () => {
+        setLoading(true);
+        try {
+            const payload = {
+                username: name,
+                password: password,
+                email: email,
+                avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${name}`,
+            }
+            const data = await authApi.sendOtp(payload);
+            if (data) {
+                console.log(data);
+
+                router.push({
+                    pathname: "/otpVerify", params: {
+                        username: name,
+                        password: password,
+                        email: email,
+                        avatar: `https://api.dicebear.com/7.x/avataaars/png?seed=${name}`,
+                    }
+                });
+            }
+
+        } catch (error) {
+            console.error("Register failure!", error);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -102,15 +135,20 @@ const Signup = () => {
                         styles.btn,
                         checkActive && styles.btn_active
                     ]}
+                    onPress={() => handleRegister()}
                 >
-                    <Text
-                        style={[
-                            styles.text_btn,
-                            checkActive && styles.text_btnActive
-                        ]}
-                    >
-                        Tạo tài khoản
-                    </Text>
+                    {loading ? (
+                        <ActivityIndicator size={24} color={"#fff"} />
+                    ) : (
+                        <Text
+                            style={[
+                                styles.text_btn,
+                                checkActive && styles.text_btnActive
+                            ]}
+                        >
+                            Tạo tài khoản
+                        </Text>
+                    )}
                 </TouchableOpacity>
 
                 <View style={[styles.flex_box, { marginVertical: 10 }]}>

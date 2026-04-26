@@ -1,13 +1,12 @@
 export interface User {
-    userId: string;
+    user_id: string;
     username: string;
     email: string;
-    phone: string;
+    phone?: string;
     avatar?: string;
-    statusMessage?: string;
-    isOnline: boolean;
-    lastSeen: Date;
-    createdAt: Date;
+    password?: string;
+    is_online: boolean;
+    created_at: Date;
 }
 
 export interface Friend {
@@ -19,19 +18,20 @@ export interface Friend {
 }
 
 export interface FriendRequest {
-    requestId: string;
-    senderId: string;
-    receiverId: string;
+    friend_id: string;
+    sender_id: string;
+    receiver_id: string;
     status: "pending" | "accepted" | "rejected";
-    createdAt: Date;
+    created_at: Date;
 }
 
 export interface Conversation {
-    conversationId: string;
+    conversation_id: string;
     name?: string;
     type: "private" | "group";
-    createdBy: string;
-    createdAt: Date;
+    create_by: string;
+    create_at: Date;
+    avatar: string
 }
 
 export interface ConversationMember {
@@ -42,7 +42,7 @@ export interface ConversationMember {
     joinedAt: Date;
 }
 
-export interface Message {
+export interface Message2 {
     messageId: string;
     conversationId: string;
     senderId: string;
@@ -76,7 +76,7 @@ export interface ConversationDetail {
 
     members: User[];
 
-    lastMessage: Message;
+    lastMessage: Message2;
 
     nameGroup?: string,
 }

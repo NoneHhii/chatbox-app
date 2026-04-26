@@ -6,14 +6,17 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
+import { useSelector } from 'react-redux';
+import { User } from '@/types/input';
 
 export default function HomeScreenText() {
+    const user: User = useSelector((state) => state.auth.user);
     return (
         <ParallaxScrollView
             headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
             headerImage={
                 <Image
-                    source={require('@/assets/images/partial-react-logo.png')}
+                    source={{ uri: user?.avatar }}
                     style={styles.reactLogo}
                 />
             }>

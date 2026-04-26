@@ -1,22 +1,63 @@
-import { Animated, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, FlatList, Image, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import ChatApi from '@/api/chatApi';
 import ConversationItem from '@/components/conversationItem';
 import { ThemedText } from '@/components/themed-text';
-import { conversationDetails } from '@/database/conversationDetail';
-import { conversations } from '@/database/conversations';
-import { friends } from '@/database/friends';
-import { messages } from '@/database/messages';
-import { users } from '@/database/users';
-import { ConversationDetail, User } from '@/types/input';
+// import { conversations } from '@/database/conversations';
+import { useConversation } from '@/hooks/useChat';
+import { useMyFriend } from '@/hooks/useFriends';
+import { useAppSelector } from '@/redux/hooks';
+import useChatStore from '@/redux/store/useChatStore';
+import { socket } from '@/socket/config';
+import { FriendRequest, User } from '@/types/input';
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// export interface ConversationProp {
+//   converDetail: ConversationDetail,
+//   lastMessage: string,
+//   lastActive: string,
+//   lastMessageAt: number,
+// }
+
 export interface ConversationProp {
-  converDetail: ConversationDetail,
-  lastMessage: string,
-  lastActive: string,
+  conversation_id?: string,
+  name: string,
+  type?: String,
+  avatar: string,
+  last_message: String,
+  last_time_message: any,
+  last_sender_id?: string,
+  last_sender_name?: string,
+  friend_id?: string,
+  converId?: string
+}
+
+export interface requests {
+  friendRequest: FriendRequest,
+  user_id: String,
+  username: String,
+  avatar: String
+}
+
+export interface UserPropComponent {
+  user_id: String,
+  username: String,
+  avatar: String,
+  request_create_at?: String,
+  request_status?: string,
+  friend_id: string,
+}
+
+interface StartChatParams {
+  name: string,
+  avatar: string,
+  friend_id?: string,  // avatar
+  conversation_id?: string,
 }
 
 const myID = 'U01';
@@ -25,62 +66,213 @@ export default function HomeScreen() {
   const [myFriends, setMyFriends] = useState<User[]>([]);
   // const [conversations, setConversations] = useState<Conversation[]>([]);
   const [converProps, setConverProps] = useState<ConversationProp[]>([]);
-  const [user, setUser] = useState<User | undefined>(users.find(u => u.userId === myID));
+  const user: User | null = useAppSelector(state => state.auth.user);
+  // console.log(user);
+  const query = useQueryClient();
 
-  const filterFriend = useMemo(() => {
-    const idFriend = friends.filter(f => f.userId === myID && f.status === 'accepted').map(f => f.friendUserId);
-    return users.filter(u => idFriend.includes(u.userId));
-  }, [friends])
-
-  const filterConversation = useMemo(() => {
-    // 1. Lấy danh sách hội thoại mà user hiện tại tham gia (createdBy hoặc là thành viên)
-    const myConversations = conversations.filter(c => c.createdBy === myID);
-
+  const { data: friends, isLoading } = useMyFriend();
+  const { data: conversations, isLoading: loadingConver } = useConversation();
+  // console.log(conversations);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [groupModalVisible, setGroupModalVisible] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState<string[]>([]); // Lưu ID
+  const [groupName, setGroupName] = useState("");
 
 
-    // 2. Map trực tiếp sang kiểu ConversationProp
-    return myConversations.map((convers) => {
-      const detail = conversationDetails.find(
-        (d) => d.conversation.conversationId === convers.conversationId
+  const { setConversations, addConversation, getConversationById, updateConversationInfo } = useChatStore();
+
+
+  // const filterFriend = useMemo(() => {
+  //   const idFriend = friends.map(f => f.sender_id);
+  //   return users.filter(u => idFriend.includes(u.user_id));
+  // }, [friends])
+  useEffect(() => {
+    if (conversations) setConversations(conversations);
+  }, [conversations])
+
+  const handleStartChat = async (
+    name: string,
+    avatar: string,
+    friend_id?: string,
+    conversation_id?: string
+  ) => {
+    try {
+      const receiverIds = friend_id
+        ? [friend_id]
+        : [];
+
+      console.log("cvId: ", conversation_id);
+
+
+      const res =
+        await ChatApi.getOrCreateConversation({
+          receiverIds,
+          name: name,
+          avatar,
+          type: "private",
+          converId: conversation_id,
+        });
+
+      const newConv =
+        res.data;
+
+      const existing =
+        getConversationById(
+          newConv.conversation_id
+        );
+
+      if (!existing) {
+        addConversation({
+          conversation_id:
+            newConv.conversation_id,
+
+          name:
+            newConv.name ||
+            name,
+
+          avatar:
+            newConv.avatar ||
+            avatar,
+
+          last_message:
+            newConv.last_message ||
+            "Bắt đầu cuộc trò chuyện",
+
+          last_time_message:
+            newConv.last_time_message ||
+            new Date().toISOString(),
+
+          last_sender_id:
+            newConv.last_sender_id,
+
+          last_sender_name:
+            newConv.last_sender_name,
+        });
+      }
+
+      router.push({
+        pathname:
+          "/chat-room",
+        params: {
+          id:
+            newConv.conversation_id,
+          partnerName:
+            newConv.name ||
+            name,
+        },
+      });
+    } catch (error) {
+      console.log(error);
+      alert(
+        "Không thể bắt đầu chat"
       );
+    }
+  };
 
-      const members = detail?.members || [];
-      const idMembers = members.map((u) => u.userId);
+  useEffect(() => {
+    const handleUpdate = (data: any) => {
+      console.log("Socket nhận update nhóm:", data.name);
+      // Gọi hàm của Store để cập nhật toàn hệ thống
+      updateConversationInfo(data.conversation_id, {
+        name: data.name,
+        avatar: data.avatar
+      });
+    };
 
-      // Lọc tin nhắn thuộc về cuộc hội thoại này (dựa trên người gửi là thành viên)
-      // Lưu ý: Logic chuẩn thường là messages có conversationId, nhưng theo code bạn là lọc theo members
-      const messageConver = messages.filter((m) => idMembers.includes(m.senderId));
+    socket.on("group_updated", handleUpdate);
 
-      // Sắp xếp lấy tin nhắn mới nhất (Số lớn nhất - mới nhất nằm ở vị trí 0)
-      const sortedMessages = [...messageConver].sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-      );
+    return () => {
+      socket.off("group_updated", handleUpdate);
+    };
+  }, []);
 
-      const lastMsg = sortedMessages[0]; // Tin nhắn mới nhất
+  const toggleSelectFriend = (friendId: string) => {
+    setSelectedFriends(prev =>
+      prev.includes(friendId) ? prev.filter(id => id !== friendId) : [...prev, friendId]
+    );
+  };
 
-      // Trả về object đúng kiểu ConversationProp
-      return {
-        converDetail: detail,
-        lastMessage: lastMsg?.content || "Chưa có tin nhắn",
-        // Tính toán lastActive
-        lastActive: lastMsg
-          ? (new Date().getTime() - lastMsg.createdAt.getTime() < 60000
-            ? 'Vừa xong'
-            : lastMsg.createdAt.getHours().toString() + " giờ trước")
-          : '',
-      };
-    }).filter((item): item is ConversationProp => item !== null);
-  }, [conversations, messages, conversationDetails]);
+  // Hàm gọi API tạo nhóm
+  const handleCreateGroup = async () => {
+    try {
+      const res = await ChatApi.getOrCreateConversation({
+        receiverIds: selectedFriends,
+        name: groupName || "Nhóm mới",
+        avatar: "",
+        type: "group"
+      });
+      setGroupModalVisible(false);
+      setSelectedFriends([]);
+      const newConv = res.data;
+      const existingConv = getConversationById(newConv.conversation_id);
+      if (!existingConv) {
+        // Nếu là hội thoại mới tạo (chưa có trong Store), thêm nó vào
+        addConversation({
+          conversation_id: newConv.conversation_id,
+          name: groupName,
+          avatar: newConv.avatar || "", // Đảm bảo lấy đủ thông tin từ res.data
+          last_message: "Bắt đầu cuộc trò chuyện ngay",
+          last_time_message: new Date().toISOString(),
+        });
+      }
+      router.push({ pathname: '/chat-room', params: { id: newConv.conversation_id, partnerName: groupName } });
+    } catch (error) {
+      alert("Lỗi tạo nhóm");
+    }
+  };
+
+
+  const finalDisplayList = useMemo(() => {
+    const safeConversations = conversations || [];
+
+    // Lọc những người bạn chưa có trong danh sách hội thoại để tránh trùng lặp
+    const talkedUserIds = safeConversations.map(c => c.friend_id);
+    const talkedUserName = safeConversations.map(c => c.name);
+    console.log(talkedUserName);
+
+
+    const virtualConversations = (friends || [])
+      .filter((friend: User) => !talkedUserIds.includes(friend.user_id))
+      .map((friend: User) => ({
+        conversation_id: `temp_${friend.user_id}`,
+        name: friend.username,
+        avatar: friend.avatar || "",
+        last_message: `Vẫy tay chào ${friend.username} 👋`,
+        last_time_message: new Date().toISOString(), // Dùng chuỗi ISO cho đồng bộ
+        last_sender_id: friend.user_id,
+        last_sender_name: friend.username,
+        lastMessageAt: Date.now(), // Dùng để sort
+      }));
+
+    // Gộp hội thoại thật và ảo
+    const combined = [...safeConversations, ...virtualConversations];
+    // console.log("conver: ", combined);
+
+
+    // Sắp xếp: ưu tiên những gì mới nhất lên đầu
+    return combined.sort((a, b) => {
+      const timeA = new Date(a.last_time_message).getTime() || 0;
+      const timeB = new Date(b.last_time_message).getTime() || 0;
+      return timeB - timeA;
+    });
+  }, [friends, conversations]);
+
+
 
   const renderUser = ({ item }: { item: User }) => {
     return (
-      <View>
-        <View style={[styles.avatarBorder, { marginRight: 12 }]}>
+      <View >
+        <View style={[styles.avatarBorder, { marginRight: 12, position: 'relative' }]}>
           <Image
             source={{ uri: item.avatar }}
             style={styles.avatar}
             resizeMode="cover"
           />
+          {item.is_online && (
+            <View style={[styles.btnAdd, { backgroundColor: '#00FF00' }]}>
+
+            </View>
+          )}
         </View>
         <Text
           numberOfLines={1}
@@ -93,11 +285,14 @@ export default function HomeScreen() {
         >
           {item.username}
         </Text>
+
       </View>
     )
   }
 
   const renderConver = ({ item }: { item: ConversationProp }) => {
+    // console.log("ItemC: ", item);
+
 
     const renderRightSlide = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
       const trans = dragX.interpolate({
@@ -123,7 +318,12 @@ export default function HomeScreen() {
 
     return (
       <Swipeable renderRightActions={renderRightSlide}>
-        <ConversationItem conversation={item} />
+        <ConversationItem conversation={item} handleStartChat={(p: StartChatParams) => handleStartChat(
+          p.name,      // friendName
+          p.avatar,
+          p.friend_id,   // avatar
+          p.conversation_id // THÊM CÁI NÀY ĐỂ BACKEND KHÔNG NHẦM
+        )} isMe={item.last_sender_id ? item.last_sender_id === user?.user_id : false} />
       </Swipeable>
     )
   }
@@ -133,11 +333,43 @@ export default function HomeScreen() {
       <View style={{ flex: 1 }}>
         <View>
           <View style={[styles.flexBox, { justifyContent: 'space-between', marginHorizontal: 8 }]}>
-            <View style={styles.circleBorder}>
+            <TouchableOpacity
+              style={styles.circleBorder}
+              onPress={() => router.push("/search-sreen")}
+            >
               <Ionicons name='search' size={24} color={'white'} />
-            </View>
+            </TouchableOpacity>
             <ThemedText type='subtitle' lightColor='white'>Home</ThemedText>
-            <Ionicons name="notifications" size={24} color="white" />
+            <View style={[styles.flexBox, { gap: 8 }]}>
+              <Ionicons
+                name="notifications"
+                size={24}
+                color="white"
+                onPress={() => router.push('/requests-screen')}
+              />
+              <Ionicons
+                name="add-circle"
+                size={24}
+                color="white"
+                onPress={() => setMenuVisible(true)}
+              />
+
+              {/* Modal Menu Lựa chọn */}
+              <Modal visible={menuVisible} transparent animationType="fade">
+                <TouchableOpacity style={styles.modalOverlay} onPress={() => setMenuVisible(false)}>
+                  <View style={styles.menuContent}>
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setGroupModalVisible(true); }}>
+                      <Ionicons name="people-outline" size={20} />
+                      <Text>Tạo nhóm mới</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.menuItem}>
+                      <Ionicons name="document-outline" size={20} />
+                      <Text>My Document</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
+            </View>
           </View>
 
           <View style={[styles.flexBox, { marginVertical: 12 }]}>
@@ -148,7 +380,7 @@ export default function HomeScreen() {
                 <View style={[styles.circleDashedBorder, { borderColor: 'white', borderLeftColor: 'transparent' }]} />
                 <View style={[styles.circleDashedBorder, { borderColor: 'red', borderTopColor: 'transparent', borderBottomColor: 'transparent' }]} />
                 <Image
-                  source={{ uri: user?.avatar }}
+                  source={{ uri: user?.avatar?.replace('/svg', '/png') }}
                   style={styles.avatar}
                   resizeMode="cover"
                 />
@@ -165,12 +397,12 @@ export default function HomeScreen() {
                   textAlign: 'center'
                 }}
               >
-                Me
+                {user?.username}
               </Text>
             </View>
             {/* friend */}
             <FlatList
-              data={filterFriend}
+              data={friends || []}
               renderItem={renderUser}
               horizontal
             />
@@ -180,13 +412,62 @@ export default function HomeScreen() {
         <View style={styles.chatbox}>
           <View style={styles.dragLine} />
           <FlatList
-            data={filterConversation}
+            data={finalDisplayList}
             renderItem={renderConver}
             style={{
               width: '90%'
             }}
           />
         </View>
+        <Modal visible={groupModalVisible} animationType="slide">
+          <SafeAreaView style={{ flex: 1 }}>
+            <View style={styles.groupHeader}>
+              <Text style={styles.groupTitle}>Tạo nhóm ({selectedFriends.length})</Text>
+              <TouchableOpacity onPress={() => setGroupModalVisible(false)}>
+                <Text style={{ color: 'red' }}>Hủy</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              placeholder="Nhập tên nhóm..."
+              style={styles.groupInput}
+              onChangeText={setGroupName}
+            />
+
+            {/* Danh sách bạn bè để chọn */}
+            <FlatList
+              data={friends || []}
+              keyExtractor={item => item.user_id}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.friendSelectItem} onPress={() => toggleSelectFriend(item.user_id)}>
+                  <Image source={{ uri: item.avatar }} style={styles.avatarSmall} />
+                  <Text style={{ flex: 1, marginLeft: 10 }}>{item.username}</Text>
+                  <Ionicons
+                    name={selectedFriends.includes(item.user_id) ? "checkbox" : "square-outline"}
+                    size={24} color="#24786D"
+                  />
+                </TouchableOpacity>
+              )}
+            />
+
+            {/* Thanh hiển thị Avatar người đã chọn và nút Tạo */}
+            {selectedFriends.length > 0 && (
+              <View style={styles.footerCreateGroup}>
+                <FlatList
+                  data={friends?.filter(f => selectedFriends.includes(f.user_id))}
+                  horizontal
+                  renderItem={({ item }) => (
+                    <Image source={{ uri: item.avatar }} style={styles.avatarSelected} />
+                  )}
+                  style={{ flex: 1 }}
+                />
+                <TouchableOpacity style={styles.btnConfirmGroup} onPress={handleCreateGroup}>
+                  <Ionicons name="arrow-forward" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </SafeAreaView>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -298,5 +579,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
 
-  dragLine: { borderWidth: 4, borderRadius: 10, borderColor: '#ccc', width: '15%', marginTop: 15 }
+  dragLine: { borderWidth: 4, borderRadius: 10, borderColor: '#ccc', width: '15%', marginTop: 15 },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  menuContent: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    width: 200,
+    padding: 10
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: '#eee'
+  },
+  groupTitle: { fontSize: 18, fontWeight: 'bold' },
+  groupInput: { padding: 16, fontSize: 16, backgroundColor: '#f9f9f9' },
+  friendSelectItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 0.5,
+    borderColor: '#eee'
+  },
+  avatarSmall: { width: 40, height: 40, borderRadius: 20 },
+  footerCreateGroup: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderColor: '#eee'
+  },
+  avatarSelected: { width: 35, height: 35, borderRadius: 17.5, marginRight: 5 },
+  btnConfirmGroup: {
+    backgroundColor: '#24786D',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center'
+  }
 });

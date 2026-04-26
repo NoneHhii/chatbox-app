@@ -48,3 +48,7 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+Scroll to Message: Khi bấm vào thanh ghim, Khoa dùng flatListRef.current.scrollToIndex để nhảy đến đúng vị trí tin nhắn đó trong danh sách chat.
+
+Backend check: Chỉ cho phép Admin hoặc người gửi tin nhắn được ghim/bỏ ghim (nếu là nhóm).

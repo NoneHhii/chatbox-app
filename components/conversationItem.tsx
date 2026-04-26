@@ -1,62 +1,95 @@
-import { ConversationProp } from "@/app/(tabs)"
-import { Image, StyleSheet, Text, View } from "react-native"
-import { avatarDefault } from '../assets/images/avatar-default.png'
+import { ConversationProp } from "@/app/(tabs)";
+import { format, formatDistanceToNow, isToday } from "date-fns";
+import { vi } from 'date-fns/locale';
+import { useEffect, useState } from "react";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { avatarDefault } from '../assets/images/avatar-default.png';
+
+interface StartChatParams {
+    name: string;
+    avatar: string;
+    friend_id?: string;
+    conversation_id?: string;
+}
 
 interface props {
     conversation: ConversationProp,
+    isMe: boolean,
+    handleStartChat: (params: StartChatParams) => void,
 }
 
-const ConversationItem = ({ conversation }: props) => {
+const ConversationItem = ({ conversation, handleStartChat, isMe }: props) => {
+    const [tick, setTick] = useState(0);
 
-    const nameChat = () => {
-        if (conversation.converDetail.members.length > 2)
-            return conversation.converDetail.nameGroup || conversation.converDetail.members.map(m => m.username).join();
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTick(t => t + 1); // Cứ mỗi 1 phút tăng tick để hàm renderTime chạy lại
+        }, 60000);
+        return () => clearInterval(timer);
+    }, []);
 
-        return conversation.converDetail.members?.[1].username;
-    }
+    // Hàm render thời gian an toàn tránh lỗi Metro Resolve
+    const renderTime = (time: string | Date) => {
+        try {
+            if (!time) return "";
+            const date = new Date(time);
+
+            // Nếu là trong ngày hôm nay thì hiện "X phút trước"
+            if (isToday(date)) {
+                return formatDistanceToNow(date, {
+                    addSuffix: true,
+                    locale: vi
+                }).replace('khoảng ', ''); // Bỏ bớt chữ "khoảng" cho ngắn gọn
+            }
+
+            // Nếu đã qua ngày hôm sau thì hiện "Ngày/Tháng"
+            return format(date, 'dd/MM', { locale: vi });
+        } catch (e) {
+            return "Vừa xong";
+        }
+    };
+    // console.log("item: ", conversation?.avatar);
+
 
     return (
-        <View style={styles.container}>
-            <View style={[styles.avatarBorder, { marginRight: 12 }]}>
-                {/* <View style={styles.avatar}> */}
-                <Image source={{ uri: conversation.converDetail.members?.[1]?.avatar || avatarDefault }} style={styles.avatar} resizeMode="cover" />
-                {/* </View> */}
-            </View>
-            <View style={{ flex: 1 }}>
-                <Text
-                    numberOfLines={1}
-                    style={{
-                        fontSize: 16,
-                    }}
-                >
-                    {nameChat()}
-                </Text>
+        <TouchableOpacity
+            style={styles.container}
+            onPress={() => {
+                console.log("press: ", conversation.conversation_id);
 
-                <Text
-                    numberOfLines={1}
-                    style={{
-                        fontSize: 12,
-                    }}
-                >
-                    {conversation.lastMessage}
+                handleStartChat({
+                    name: conversation.name,
+                    avatar: conversation.avatar,
+                    friend_id: conversation.friend_id || conversation.last_sender_id,
+                    conversation_id: conversation.conversation_id
+                })
+            }}
+        >
+            <View style={[styles.avatarBorder, { marginRight: 12 }]}>
+                <Image
+                    source={conversation.avatar ? { uri: conversation.avatar } : avatarDefault}
+                    style={styles.avatar}
+                    resizeMode="cover"
+                />
+            </View>
+
+            <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: '600' }}>
+                    {conversation.name}
+                </Text>
+                <Text numberOfLines={1} style={{ fontSize: 14, color: '#797C7B' }}>
+                    {isMe ? "Bạn: " : (conversation.last_sender_id && conversation.last_sender_name + ": ")}{conversation.last_message}
                 </Text>
             </View>
-            <View>
-                <Text
-                    style={{
-                        fontSize: 12,
-                        color: '#797C7B'
-                    }}
-                >
-                    {conversation.lastActive}
-                </Text>
-                <Text style={{ display: 'none' }}>
-                    {conversation.lastActive}
+
+            <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 12, color: '#797C7B' }}>
+                    {renderTime(conversation.last_time_message)}
                 </Text>
             </View>
-        </View>
-    )
-}
+        </TouchableOpacity>
+    );
+};
 
 const styles = StyleSheet.create({
     container: {
